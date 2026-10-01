@@ -416,10 +416,14 @@
       });
 
       if (evalResult.verdict === 'USEFUL') {
-        showStatusPill(`✅ SWE Verified (${evalResult.category || 'Useful'})`, 'useful', 4000);
-      } else {
+        showStatusPill(`✅ SWE Verified: ${evalResult.reason || 'Useful'}`, 'useful', 5000);
+      } else if (evalResult.verdict === 'NOT_USEFUL') {
         removePill();
         showDistractionWarningModal(metadata, evalResult, settings);
+      } else {
+        // Model error or downloading: NEVER close the tab! Display honest status.
+        console.warn('[SWE Guardian]', evalResult.reason);
+        showStatusPill(`⚠️ ${evalResult.reason || 'Gemini Nano not ready (tab kept)'}`, 'info', 7000);
       }
     };
 

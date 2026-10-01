@@ -1,223 +1,134 @@
 /**
  * Inevitably Productive: SWE Guardian - Main World Evaluator
- * Runs inside YouTube's MAIN JavaScript world to access Chrome's built-in Gemini Nano (ai.languageModel).
- * Communicates with the isolated content script via window.postMessage.
+ * Directly executes Chrome's on-device Gemini Nano (Prompt API).
+ * Pure LLM evaluation - NO dumb keyword matching.
  */
 
 (function () {
   const SENDER_ID = 'SWE_GUARD_MAIN_WORLD';
   const TARGET_ID = 'SWE_GUARD_ISOLATED_WORLD';
 
-  let aiSession = null;
-  let cachedCapabilities = null;
+  console.log('[SWE Guardian] Evaluator running in YouTube MAIN world.');
 
-  console.log('[SWE Guardian - Main World] Evaluator initialized.');
-
-  // Check Gemini Nano availability
-  async function checkModelCapabilities() {
-    try {
-      const aiObject = window.ai || (typeof ai !== 'undefined' ? ai : null);
-      if (!aiObject || !aiObject.languageModel) {
-        return { available: 'no', reason: 'window.ai.languageModel is undefined' };
-      }
-
-      if (typeof aiObject.languageModel.capabilities === 'function') {
-        const caps = await aiObject.languageModel.capabilities();
-        cachedCapabilities = caps;
-        return caps;
-      }
-
-      return { available: 'readily' };
-    } catch (err) {
-      console.warn('[SWE Guardian] Error checking capabilities:', err);
-      return { available: 'no', error: err.message };
-    }
-  }
-
-  // Build the system prompt tailored to software & systems engineering
-  function buildSystemPrompt(strictness = 'balanced') {
-    let strictnessGuidance = '';
-    if (strictness === 'strict') {
-      strictnessGuidance = `
-STRICTNESS: ULTRA-STRICT SYSTEMS & CORE SWE ONLY.
-- MUST contain concrete technical substance: system architecture, operating systems, compilers, distributed systems, memory management, database internals, algorithms, high-performance networking, low-level debugging, kernel development, or real code walkthroughs.
-- REJECT: High-level tech news, tech company gossip, superficial "day in the life" vlogs, generic productivity tips, low-effort listicles ("Top 5 languages in 2026").
-`;
-    } else if (strictness === 'lenient') {
-      strictnessGuidance = `
-STRICTNESS: LENIENT.
-- PERMIT: Any computer science, programming, IT, software engineering, tech career advice, or tech tooling topic.
-- ONLY REJECT: Blatant non-technical content, pure gaming/entertainment, clickbait drama, politics, sports, music, and completely unrelated fluff.
-`;
-    } else {
-      // Balanced
-      strictnessGuidance = `
-STRICTNESS: BALANCED SWE & SYSTEMS.
-- PERMIT: High quality coding tutorials, systems architecture, DevOps/SRE, software design patterns, developer tools, database engineering, SWE career progression, technical postmortems, and technical deep dives.
-- REJECT: Pure entertainment, clickbait drama, gaming livestreams, non-technical lifestyle vlogs, dropshipping/crypto scams, and superficial hype.
-`;
-    }
-
-    return `You are an elite, objective technical gatekeeper for professional Software Engineers and Systems Engineers.
-Your duty is to judge whether a YouTube video is genuinely valuable, technical, educational, or professional for someone in Software Engineering, Systems Engineering, DevOps/SRE, or Computer Science.
-
-${strictnessGuidance}
-
-RESPONSE FORMAT:
-You MUST respond with a JSON object strictly adhering to this structure:
-{
-  "verdict": "USEFUL" or "NOT_USEFUL",
-  "confidence": <integer between 0 and 100>,
-  "category": "<e.g., Systems Architecture, Distributed Systems, Web Dev, DevOps, Clickbait/Fluff, Entertainment>",
-  "reason": "<One clear, punchy sentence explaining why this video is or is not useful for a software/systems engineer>"
-}
-
-Do NOT wrap in markdown backticks or include any conversational filler. Only output valid JSON.`;
+  // Find Chrome's built-in Prompt API
+  function getAI() {
+    if (typeof window !== 'undefined' && window.ai?.languageModel) return window.ai;
+    if (typeof ai !== 'undefined' && ai.languageModel) return ai;
+    if (typeof window !== 'undefined' && window.LanguageModel) return { languageModel: window.LanguageModel };
+    return null;
   }
 
   /**
-   * Get or create a Gemini Nano session
+   * Check Gemini Nano status directly from the browser
    */
-  async function getOrCreateSession(strictness) {
-    const aiObject = window.ai || (typeof ai !== 'undefined' ? ai : null);
-    if (!aiObject || !aiObject.languageModel) {
-      return null;
+  async function checkStatus() {
+    const aiObj = getAI();
+    if (!aiObj?.languageModel) {
+      return {
+        ready: false,
+        status: 'not_found',
+        message: 'window.ai.languageModel not found. Enable #prompt-api in chrome://flags and relaunch.'
+      };
     }
 
     try {
-      const systemPrompt = buildSystemPrompt(strictness);
-      const session = await aiObject.languageModel.create({
-        systemPrompt: systemPrompt,
-        temperature: 0.2, // Low temperature for consistent, strict classification
-        topK: 3
+      if (typeof aiObj.languageModel.capabilities === 'function') {
+        const caps = await aiObj.languageModel.capabilities();
+        return {
+          ready: caps.available === 'readily',
+          status: caps.available, // 'readily' | 'after-download' | 'no'
+          capabilities: caps
+        };
+      }
+      return { ready: true, status: 'readily' };
+    } catch (err) {
+      return { ready: false, status: 'error', message: err.message };
+    }
+  }
+
+  /**
+   * Pure Gemini Nano LLM Evaluation
+   */
+  async function evaluateWithGeminiNano(videoData) {
+    const aiObj = getAI();
+    if (!aiObj?.languageModel) {
+      throw new Error('Chrome Prompt API (window.ai.languageModel) is NOT available in this browser window. Please check chrome://flags/#prompt-api and relaunch Chrome.');
+    }
+
+    // Check capabilities first
+    if (typeof aiObj.languageModel.capabilities === 'function') {
+      const caps = await aiObj.languageModel.capabilities();
+      console.log('[SWE Guardian] Gemini Nano capabilities:', caps);
+      if (caps.available === 'no') {
+        throw new Error('Gemini Nano reports available: "no". Your hardware or Chrome setup is not supported for on-device AI.');
+      }
+      if (caps.available === 'after-download') {
+        throw new Error('Gemini Nano weights are still downloading from chrome://components ("Optimization Guide On Device Model"). Please wait for download to finish.');
+      }
+    }
+
+    const systemPrompt = `You are a helpful and intelligent gatekeeper for Computer Science, Software Engineering, and Data Engineering practitioners.
+Your job is to classify YouTube videos into USEFUL or NOT_USEFUL.
+
+CLASSIFICATION RULES:
+- Mark "USEFUL" for ANYTHING related to:
+  * Software Engineering, coding, programming tutorials, language guides (Python, Rust, C++, Go, Java, JS, etc.)
+  * Data Engineering, data pipelines, SQL, Spark, Kafka, Airflow, dbt, databases, big data
+  * Systems Engineering, Linux, kernel, networking, distributed systems, architecture
+  * Developer tools (Docker, K8s, Git, Neovim, VS Code, CI/CD, terminals)
+  * Computer Science theory, algorithms, data structures, LeetCode, mathematics for CS
+  * Tech career growth, engineering postmortems, architecture breakdowns
+
+- Mark "NOT_USEFUL" ONLY for:
+  * Non-technical entertainment, gaming livestreams, reality shows, drama, gossip
+  * Pranks, lifestyle vlogs, relationship content, unboxings, clickbait with zero coding or tech substance
+
+OUTPUT FORMAT:
+Respond with ONLY a raw JSON object (no markdown, no backticks):
+{"verdict": "USEFUL" or "NOT_USEFUL", "reason": "<one concise sentence explaining why>", "category": "<topic category>"}`;
+
+    // Create session (Note: do NOT pass temperature/topK as it throws on Chrome without sampling-mode flag)
+    let session = null;
+    try {
+      session = await aiObj.languageModel.create({
+        systemPrompt: systemPrompt
       });
-      return session;
-    } catch (err) {
-      console.warn('[SWE Guardian] Failed to create Gemini Nano session:', err);
-      return null;
-    }
-  }
-
-  /**
-   * Run evaluation with Gemini Nano
-   */
-  async function evaluateWithGeminiNano(videoData, strictness) {
-    const aiObject = window.ai || (typeof ai !== 'undefined' ? ai : null);
-    if (!aiObject || !aiObject.languageModel) {
-      throw new Error('Gemini Nano API not available');
+    } catch (createErr) {
+      console.warn('[SWE Guardian] create({systemPrompt}) failed, trying create() with prompt prefix:', createErr);
+      session = await aiObj.languageModel.create();
     }
 
-    const session = await getOrCreateSession(strictness);
-    if (!session) {
-      throw new Error('Could not establish language model session');
-    }
-
-    const promptText = `Evaluate this YouTube video for software and systems engineering value:
+    try {
+      const userPrompt = `Classify this video:
 Title: "${videoData.title}"
 Channel: "${videoData.channel}"
-Description Snippet: "${(videoData.description || '').substring(0, 400)}"
-Keywords/Tags: "${(videoData.tags || []).join(', ')}"
+Description: "${(videoData.description || '').substring(0, 500)}"
 
-Provide your verdict as raw JSON.`;
+JSON:`;
 
-    const rawResponse = await session.prompt(promptText);
-    session.destroy?.(); // Clean up session memory
+      console.log('[SWE Guardian] Prompting Gemini Nano with video metadata...');
+      const responseText = await session.prompt(userPrompt);
+      console.log('[SWE Guardian] Raw Gemini Nano response:', responseText);
 
-    // Parse JSON safely
-    const cleaned = rawResponse
-      .replace(/```json/gi, '')
-      .replace(/```/g, '')
-      .trim();
+      // Clean response of any accidental markdown or code fences
+      const cleaned = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleaned);
 
-    const parsed = JSON.parse(cleaned);
-    return {
-      verdict: parsed.verdict === 'USEFUL' ? 'USEFUL' : 'NOT_USEFUL',
-      confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 85,
-      category: parsed.category || 'General',
-      reason: parsed.reason || (parsed.verdict === 'USEFUL' ? 'Relevant technical topic.' : 'Deemed unrelated to engineering.'),
-      engine: 'Gemini Nano (On-Device)'
-    };
+      return {
+        verdict: parsed.verdict?.toUpperCase() === 'USEFUL' ? 'USEFUL' : 'NOT_USEFUL',
+        reason: parsed.reason || 'Evaluated by Gemini Nano.',
+        category: parsed.category || 'Tech',
+        engine: 'Gemini Nano (On-Device LLM)'
+      };
+    } finally {
+      try {
+        session.destroy?.();
+      } catch (e) {}
+    }
   }
 
-  /**
-   * High-accuracy heuristic fallback when Gemini Nano flag is not yet enabled or downloading
-   */
-  function fallbackHeuristicEvaluate(videoData, strictness) {
-    const text = `${videoData.title} ${videoData.channel} ${videoData.description} ${(videoData.tags || []).join(' ')}`.toLowerCase();
-
-    const techPositiveKeywords = [
-      'system design', 'distributed systems', 'rust', 'c++', 'golang', 'python', 'javascript', 'typescript',
-      'linux', 'kernel', 'kubernetes', 'docker', 'database', 'sql', 'nosql', 'postgres', 'architecture',
-      'compiler', 'assembly', 'concurrency', 'multithreading', 'devops', 'sre', 'ci/cd', 'git', 'algorithm',
-      'data structure', 'leetcode', 'api design', 'microservices', 'networking', 'tcp', 'http', 'debugging',
-      'refactoring', 'software engineering', 'systems engineering', 'web development', 'frontend', 'backend',
-      'cloud computing', 'aws', 'gcp', 'azure', 'embedded', 'cybersecurity', 'cryptography', 'machine learning engineering'
-    ];
-
-    const fluffNegativeKeywords = [
-      'reacting to', 'drama', 'prank', 'girlfriend', 'boyfriend', 'vlog', 'day in the life of a 22 year old',
-      'i quit my', 'why i was fired', 'exposed', 'crypto moon', '100x gem', 'dropshipping', 'passive income',
-      'tiktok', 'asmr', 'mukbang', 'unboxing iphone', 'challenge', 'fortnite', 'minecraft', 'gta', 'speedrun',
-      'mrbeast', 'sidemen', 'insane reveal'
-    ];
-
-    let positiveScore = 0;
-    let negativeScore = 0;
-    const matchedPositive = [];
-    const matchedNegative = [];
-
-    techPositiveKeywords.forEach(kw => {
-      if (text.includes(kw)) {
-        positiveScore += 2;
-        matchedPositive.push(kw);
-      }
-    });
-
-    fluffNegativeKeywords.forEach(kw => {
-      if (text.includes(kw)) {
-        negativeScore += 3;
-        matchedNegative.push(kw);
-      }
-    });
-
-    // Known channels bonus
-    const knownGoodChannels = [
-      'theprimeagen', 'bytebytego', 'fireship', 'low level learning', 'computerphile',
-      'sebastian lague', 'continuous delivery', 'hussein nasser', 'tsoding', 'mit opencourseware'
-    ];
-    if (knownGoodChannels.some(c => (videoData.channel || '').toLowerCase().includes(c))) {
-      positiveScore += 8;
-    }
-
-    let isUseful = positiveScore > negativeScore && positiveScore >= (strictness === 'strict' ? 4 : 2);
-    let reason = '';
-    let category = 'Engineering';
-
-    if (isUseful) {
-      reason = `Recognized key engineering concepts: ${matchedPositive.slice(0, 3).join(', ') || 'technical content'}.`;
-      category = 'Software / Systems';
-    } else {
-      if (matchedNegative.length > 0) {
-        reason = `Detected non-technical/fluff indicators: ${matchedNegative.slice(0, 2).join(', ')}.`;
-        category = 'Entertainment / Fluff';
-      } else {
-        reason = `Lacks clear software or systems engineering indicators.`;
-        category = 'Non-Technical';
-      }
-    }
-
-    return {
-      verdict: isUseful ? 'USEFUL' : 'NOT_USEFUL',
-      confidence: 80,
-      category,
-      reason,
-      engine: 'Built-in Heuristic Fallback (Enable Gemini Nano flag for full AI)'
-    };
-  }
-
-  // Handle messages from the isolated content script
+  // Listen for evaluation requests from isolated content script
   window.addEventListener('message', async (event) => {
-    // Only accept messages from the same window and target ID
     if (event.source !== window || !event.data || event.data.target !== SENDER_ID) {
       return;
     }
@@ -225,30 +136,32 @@ Provide your verdict as raw JSON.`;
     const { type, requestId, payload } = event.data;
 
     if (type === 'CHECK_MODEL_STATUS') {
-      const caps = await checkModelCapabilities();
+      const status = await checkStatus();
       window.postMessage({
         target: TARGET_ID,
         requestId,
         type: 'MODEL_STATUS_RESULT',
-        payload: {
-          available: caps.available || 'no',
-          hasWindowAI: !!(window.ai || (typeof ai !== 'undefined' ? ai : null)),
-          capabilities: caps
-        }
+        payload: status
       }, '*');
       return;
     }
 
     if (type === 'EVALUATE_VIDEO') {
-      const { videoData, strictness } = payload;
+      const { videoData } = payload;
       let result;
 
       try {
-        // Attempt Gemini Nano
-        result = await evaluateWithGeminiNano(videoData, strictness);
-      } catch (nanoErr) {
-        // Graceful fallback to deterministic heuristic classifier
-        result = fallbackHeuristicEvaluate(videoData, strictness);
+        result = await evaluateWithGeminiNano(videoData);
+      } catch (err) {
+        console.error('[SWE Guardian] Gemini Nano evaluation failed:', err);
+        // Do NOT guess with dumb keywords! Return honest error status so user knows exactly what failed!
+        result = {
+          verdict: 'ERROR_OR_BYPASS',
+          reason: `Gemini Nano Error: ${err.message}`,
+          category: 'Error',
+          engine: 'Gemini Nano',
+          error: true
+        };
       }
 
       window.postMessage({
@@ -260,10 +173,5 @@ Provide your verdict as raw JSON.`;
     }
   });
 
-  // Announce readiness
-  window.postMessage({
-    target: TARGET_ID,
-    type: 'MAIN_WORLD_READY'
-  }, '*');
-
+  window.postMessage({ target: TARGET_ID, type: 'MAIN_WORLD_READY' }, '*');
 })();
