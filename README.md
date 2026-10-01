@@ -60,7 +60,7 @@ In your Chrome address bar, configure these flags:
 3. Click the **Load unpacked** button in the top-left.
 4. Select the project directory:
    ```text
-   /Users/ark/inevitably_productive
+   /Users/ark/inevitably_productive/swe_guardian
    ```
 5. Pin **SWE Guardian** to your Chrome toolbar.
 
