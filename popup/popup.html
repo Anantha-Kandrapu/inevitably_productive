@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SWE Guardian: Gemini Nano</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <div class="logo-shield">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">SWE Guardian</h1>
+          <span class="brand-sub">Inevitably Productive</span>
+        </div>
+      </div>
+
+      <!-- Master Power Switch -->
+      <label class="toggle-switch" title="Toggle Extension On/Off">
+        <input type="checkbox" id="master-toggle" checked>
+        <span class="slider"></span>
+      </label>
+    </header>
+
+    <!-- AI Model Engine Status Banner -->
+    <div id="model-status-card" class="status-card">
+      <div class="status-indicator-dot" id="status-dot"></div>
+      <div class="status-info">
+        <div class="status-title" id="status-title">Checking Gemini Nano...</div>
+        <div class="status-desc" id="status-desc">Validating Chrome Prompt API</div>
+      </div>
+      <button class="status-info-btn" id="help-btn" title="Setup Instructions">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Collapsible Help Modal / Drawer for Flags -->
+    <div id="help-drawer" class="help-drawer hidden">
+      <div class="help-drawer-header">
+        <span>Prompt API & Gemini Nano Setup</span>
+        <button id="close-help-btn" class="close-btn">&times;</button>
+      </div>
+      <div class="help-content">
+        <p>To run Chrome's local Gemini Nano on-device:</p>
+        <ol>
+          <li>Open <code>chrome://flags</code> in a new tab.</li>
+          <li>Set <b>#prompt-api</b> to <b>Enabled</b>.</li>
+          <li>Set <b>#optimization-guide-on-device-model</b> to <b>Enabled BypassPerfRequirement</b>.</li>
+          <li>Relaunch Chrome. Check <code>chrome://components</code> for "Optimization Guide On Device Model" download.</li>
+        </ol>
+        <div class="fallback-note">💡 A high-precision SWE heuristic engine is currently active as a backup.</div>
+      </div>
+    </div>
+
+    <!-- Active Tab Quick-Action Banner (if on YouTube) -->
+    <div id="youtube-context-card" class="yt-card hidden">
+      <div class="yt-card-header">
+        <span class="yt-tag">Current YouTube Video</span>
+        <span id="yt-eval-badge" class="badge">Checking...</span>
+      </div>
+      <div id="yt-video-title" class="yt-title">Loading video info...</div>
+      <div id="yt-channel-name" class="yt-channel">Channel: ...</div>
+      <div class="yt-actions">
+        <button id="quick-whitelist-channel" class="btn-sm btn-outline">+ Whitelist Channel</button>
+        <button id="quick-whitelist-video" class="btn-sm btn-outline">+ Whitelist Video</button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="whitelist">Whitelist</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+      <button class="tab-btn" data-tab="history">History</button>
+    </nav>
+
+    <!-- Tab 1: Dashboard -->
+    <div id="tab-dashboard" class="tab-pane active">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-number" id="stat-blocked">0</div>
+          <div class="stat-label">Distractions Closed</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stat-checked">0</div>
+          <div class="stat-label">Videos Evaluated</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stat-whitelisted">0</div>
+          <div class="stat-label">Whitelisted Passed</div>
+        </div>
+      </div>
+
+      <div class="quick-summary-box">
+        <div class="summary-title">SWE & Systems Engineering Mode</div>
+        <p class="summary-text" id="strictness-summary-text">
+          Evaluating videos for system architecture, low-level design, distributed systems, algorithms, and practical software engineering.
+        </p>
+      </div>
+    </div>
+
+    <!-- Tab 2: Whitelist -->
+    <div id="tab-whitelist" class="tab-pane">
+      <div class="section-title-row">
+        <h3>Whitelisted Channels</h3>
+        <span class="counter" id="channel-count">0</span>
+      </div>
+      <div class="add-input-row">
+        <input type="text" id="new-channel-input" placeholder="e.g. ThePrimeagen, ByteByteGo">
+        <button id="add-channel-btn" class="btn-primary">Add</button>
+      </div>
+      <div class="tags-container" id="channel-tags-list">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <div class="section-title-row" style="margin-top: 18px;">
+        <h3>Whitelisted Keywords / Topics</h3>
+        <span class="counter" id="keyword-count">0</span>
+      </div>
+      <div class="add-input-row">
+        <input type="text" id="new-keyword-input" placeholder="e.g. system design, kernel, rust">
+        <button id="add-keyword-btn" class="btn-primary">Add</button>
+      </div>
+      <div class="tags-container" id="keyword-tags-list">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- Tab 3: Settings -->
+    <div id="tab-settings" class="tab-pane">
+      <div class="setting-item">
+        <div class="setting-info">
+          <label class="setting-label">Strictness Profile</label>
+          <div class="setting-desc">Control what qualifies as software/systems engineering</div>
+        </div>
+        <select id="strictness-select" class="select-input">
+          <option value="strict">Ultra-Strict (Core Systems & CS Only)</option>
+          <option value="balanced" selected>Balanced SWE (Recommended)</option>
+          <option value="lenient">Lenient (Block Only Blatant Fluff)</option>
+        </select>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-info">
+          <label class="setting-label">Countdown Grace Period</label>
+          <div class="setting-desc">Seconds before the tab automatically closes</div>
+        </div>
+        <select id="countdown-select" class="select-input">
+          <option value="0">Instant (0s - No Countdown)</option>
+          <option value="3">3 Seconds</option>
+          <option value="5" selected>5 Seconds (Default)</option>
+          <option value="10">10 Seconds</option>
+        </select>
+      </div>
+
+      <div class="setting-item">
+        <div class="setting-info">
+          <label class="setting-label">Desktop Notifications</label>
+          <div class="setting-desc">Notify when a distraction tab is closed</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="notify-toggle" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Tab 4: History -->
+    <div id="tab-history" class="tab-pane">
+      <div class="history-header">
+        <h3>Recent Video Evaluations</h3>
+        <button id="clear-history-btn" class="btn-text">Clear</button>
+      </div>
+      <div class="history-list" id="history-items-container">
+        <!-- Rendered dynamically -->
+        <div class="empty-state">No evaluations recorded yet. Open YouTube to begin!</div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span id="footer-status-text">SWE Guardian Active</span>
+      <span class="footer-version">v1.0.0 • On-Device AI</span>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

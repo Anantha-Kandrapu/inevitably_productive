@@ -1,0 +1,295 @@
+/* Inevitably Productive: SWE Guardian - YouTube Overlay & Badges */
+
+:root {
+  --swe-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --swe-bg-dark: rgba(15, 23, 42, 0.94);
+  --swe-border: rgba(255, 255, 255, 0.12);
+  --swe-primary: #3b82f6;
+  --swe-danger: #ef4444;
+  --swe-danger-glow: rgba(239, 68, 68, 0.35);
+  --swe-success: #10b981;
+  --swe-warning: #f59e0b;
+}
+
+/* Evaluating Pill Badge (Top Left of player) */
+#swe-guardian-pill {
+  position: fixed;
+  top: 72px;
+  right: 24px;
+  z-index: 99999999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  background: var(--swe-bg-dark);
+  border: 1px solid var(--swe-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.4);
+  font-family: var(--swe-font);
+  font-size: 13px;
+  font-weight: 500;
+  color: #f1f5f9;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+  user-select: none;
+}
+
+#swe-guardian-pill.swe-pulse {
+  animation: swe-glow-pulse 2s infinite ease-in-out;
+}
+
+@keyframes swe-glow-pulse {
+  0%, 100% { border-color: rgba(59, 130, 246, 0.3); box-shadow: 0 0 15px rgba(59, 130, 246, 0.2); }
+  50% { border-color: rgba(59, 130, 246, 0.8); box-shadow: 0 0 25px rgba(59, 130, 246, 0.5); }
+}
+
+#swe-guardian-pill.swe-useful {
+  border-color: rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+
+#swe-guardian-pill.swe-whitelisted {
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+}
+
+/* Fullscreen Distraction Warning & Countdown Overlay */
+#swe-guardian-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999999999;
+  background: rgba(8, 11, 20, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--swe-font);
+  padding: 24px;
+  animation: swe-fade-in 0.25s ease-out;
+}
+
+@keyframes swe-fade-in {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.swe-modal {
+  max-width: 540px;
+  width: 100%;
+  background: rgba(17, 24, 39, 0.95);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 20px;
+  padding: 32px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 40px var(--swe-danger-glow);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.swe-modal::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #ef4444, #f59e0b, #ef4444);
+  background-size: 200% 100%;
+  animation: swe-bar-flow 3s linear infinite;
+}
+
+@keyframes swe-bar-flow {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 200% 0%; }
+}
+
+.swe-header-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 9999px;
+  color: #f87171;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 20px;
+}
+
+.swe-timer-ring {
+  width: 90px;
+  height: 90px;
+  margin: 0 auto 20px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.swe-timer-ring svg {
+  transform: rotate(-90deg);
+  width: 90px;
+  height: 90px;
+}
+
+.swe-timer-ring circle {
+  fill: none;
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.swe-timer-bg {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+
+.swe-timer-progress {
+  stroke: #ef4444;
+  stroke-dasharray: 251.2;
+  stroke-dashoffset: 0;
+  transition: stroke-dashoffset 1s linear;
+}
+
+.swe-countdown-number {
+  position: absolute;
+  font-size: 32px;
+  font-weight: 800;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+
+.swe-modal h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 10px 0;
+  line-height: 1.3;
+}
+
+.swe-video-title {
+  color: #94a3b8;
+  font-size: 14px;
+  margin: 0 0 18px 0;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.swe-reason-box {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 24px;
+  text-align: left;
+}
+
+.swe-reason-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.swe-reason-text {
+  font-size: 13.5px;
+  color: #cbd5e1;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.swe-model-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+/* Action Buttons */
+.swe-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.swe-actions-primary {
+  display: flex;
+  gap: 12px;
+}
+
+.swe-btn {
+  flex: 1;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-family: var(--swe-font);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.swe-btn-danger {
+  background: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+}
+
+.swe-btn-danger:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+}
+
+.swe-btn-cancel {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.swe-btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.swe-actions-secondary {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.swe-btn-whitelist {
+  flex: 1;
+  padding: 8px 12px;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.swe-btn-whitelist:hover {
+  color: #60a5fa;
+  border-color: #60a5fa;
+  background: rgba(59, 130, 246, 0.08);
+}
