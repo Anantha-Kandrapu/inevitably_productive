@@ -110,13 +110,12 @@ JSON:`;
       const responseText = await session.prompt(userPrompt);
       console.log('[SWE Guardian] Raw Gemini Nano response:', responseText);
 
-      // Clean response of any accidental markdown or code fences
-      const cleaned = responseText.replace(/```json/gi, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleaned);
+      // Robust JSON extraction handling any markdown or trailing text from the LLM
+      const parsed = extractJSON(responseText);
 
       return {
         verdict: parsed.verdict?.toUpperCase() === 'USEFUL' ? 'USEFUL' : 'NOT_USEFUL',
-        reason: parsed.reason || 'Evaluated by Gemini Nano.',
+        reason: parsed.reason || (parsed.verdict?.toUpperCase() === 'USEFUL' ? 'Relevant technical content.' : 'Not relevant for software or systems engineering.'),
         category: parsed.category || 'Tech',
         engine: 'Gemini Nano (On-Device LLM)'
       };
@@ -127,8 +126,63 @@ JSON:`;
     }
   }
 
+  /**
+   * Resilient JSON extractor for LLM output
+   * Handles markdown blocks, trailing commentary, and unescaped strings
+   */
+  function extractJSON(text) {
+    if (!text || typeof text !== 'string') {
+      throw new Error('Empty response from model');
+    }
+
+    // 1. Direct parse attempt
+    try {
+      return JSON.parse(text.trim());
+    } catch (e) {}
+
+    // 2. Strip code blocks
+    const stripped = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    try {
+      return JSON.parse(stripped);
+    } catch (e) {}
+
+    // 3. Extract substring between first '{' and last '}'
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      const jsonCandidate = text.substring(firstBrace, lastBrace + 1);
+      try {
+        return JSON.parse(jsonCandidate);
+      } catch (e) {}
+    }
+
+    // 4. Regex extraction for structured fields
+    const verdictMatch = text.match(/"verdict"\s*:\s*"(USEFUL|NOT_USEFUL)"/i);
+    if (verdictMatch) {
+      const reasonMatch = text.match(/"reason"\s*:\s*"([^"]+)"/i);
+      const categoryMatch = text.match(/"category"\s*:\s*"([^"]+)"/i);
+      return {
+        verdict: verdictMatch[1].toUpperCase(),
+        reason: reasonMatch ? reasonMatch[1] : 'Evaluated by Gemini Nano',
+        category: categoryMatch ? categoryMatch[1] : 'General'
+      };
+    }
+
+    // 5. Keyword analysis if model answered in plain prose
+    if (/\bNOT_USEFUL\b/i.test(text) || /\b(not useful|not relevant|irrelevant|distraction|fluff)\b/i.test(text)) {
+      return { verdict: 'NOT_USEFUL', reason: 'Classified as non-engineering by Gemini Nano.', category: 'Distraction' };
+    }
+    if (/\bUSEFUL\b/i.test(text) || /\b(useful|relevant|engineering|programming)\b/i.test(text)) {
+      return { verdict: 'USEFUL', reason: 'Classified as engineering/CS content by Gemini Nano.', category: 'Tech' };
+    }
+
+    throw new Error(`Unexpected model output format: ${text.substring(0, 100)}`);
+  }
+
+  let evalQueue = Promise.resolve();
+
   // Listen for evaluation requests from isolated content script
-  window.addEventListener('message', async (event) => {
+  window.addEventListener('message', (event) => {
     if (event.source !== window || !event.data || event.data.target !== SENDER_ID) {
       return;
     }
@@ -136,40 +190,45 @@ JSON:`;
     const { type, requestId, payload } = event.data;
 
     if (type === 'CHECK_MODEL_STATUS') {
-      const status = await checkStatus();
-      window.postMessage({
-        target: TARGET_ID,
-        requestId,
-        type: 'MODEL_STATUS_RESULT',
-        payload: status
-      }, '*');
+      checkStatus().then((status) => {
+        window.postMessage({
+          target: TARGET_ID,
+          requestId,
+          type: 'MODEL_STATUS_RESULT',
+          payload: status
+        }, '*');
+      });
       return;
     }
 
     if (type === 'EVALUATE_VIDEO') {
-      const { videoData } = payload;
-      let result;
+      // Enforce sequential execution on the on-device model to prevent GPU session aborts
+      evalQueue = evalQueue.then(async () => {
+        const { videoData } = payload;
+        let result;
 
-      try {
-        result = await evaluateWithGeminiNano(videoData);
-      } catch (err) {
-        console.error('[SWE Guardian] Gemini Nano evaluation failed:', err);
-        // Do NOT guess with dumb keywords! Return honest error status so user knows exactly what failed!
-        result = {
-          verdict: 'ERROR_OR_BYPASS',
-          reason: `Gemini Nano Error: ${err.message}`,
-          category: 'Error',
-          engine: 'Gemini Nano',
-          error: true
-        };
-      }
+        try {
+          result = await evaluateWithGeminiNano(videoData);
+        } catch (err) {
+          console.error('[SWE Guardian] Gemini Nano evaluation failed:', err);
+          result = {
+            verdict: 'ERROR_OR_BYPASS',
+            reason: `Gemini Nano Error: ${err.message}`,
+            category: 'Error',
+            engine: 'Gemini Nano',
+            error: true
+          };
+        }
 
-      window.postMessage({
-        target: TARGET_ID,
-        requestId,
-        type: 'EVALUATION_RESULT',
-        payload: result
-      }, '*');
+        window.postMessage({
+          target: TARGET_ID,
+          requestId,
+          type: 'EVALUATION_RESULT',
+          payload: result
+        }, '*');
+      }).catch((queueErr) => {
+        console.error('[SWE Guardian] Queue error:', queueErr);
+      });
     }
   });
 

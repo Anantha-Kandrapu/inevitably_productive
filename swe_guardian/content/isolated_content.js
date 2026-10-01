@@ -194,21 +194,21 @@
         </div>
 
         <div class="swe-actions">
-          <div class="swe-actions-primary">
-            <button id="swe-close-now-btn" class="swe-btn swe-btn-danger">
-              Close Tab Now (${countdownRemaining}s)
+          <button id="swe-close-now-btn" class="swe-btn swe-btn-danger">
+            Close Tab Now (${countdownRemaining}s)
+          </button>
+          
+          <div class="swe-override-section">
+            <button id="swe-toggle-override-btn" class="swe-override-link">
+              Emergency Override (Keep Tab)...
             </button>
-            <button id="swe-cancel-btn" class="swe-btn swe-btn-cancel">
-              Keep Tab (Cancel)
-            </button>
-          </div>
-          <div class="swe-actions-secondary">
-            <button id="swe-whitelist-channel-btn" class="swe-btn-whitelist">
-              + Whitelist "${escapeHtml(metadata.channel || 'Channel')}"
-            </button>
-            <button id="swe-whitelist-video-btn" class="swe-btn-whitelist">
-              + Whitelist This Video
-            </button>
+            <div id="swe-override-box" class="swe-override-box hidden">
+              <div class="swe-friction-prompt">Type <strong>"I am wasting time"</strong> to unlock:</div>
+              <div class="swe-friction-input-row">
+                <input type="text" id="swe-friction-input" placeholder="Type exact phrase..." autocomplete="off">
+                <button id="swe-confirm-override-btn" class="swe-btn-confirm-override" disabled>Keep Tab</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -219,9 +219,10 @@
     const countdownNumEl = document.getElementById('swe-countdown-num');
     const ringProgressEl = document.getElementById('swe-ring-progress');
     const closeNowBtn = document.getElementById('swe-close-now-btn');
-    const cancelBtn = document.getElementById('swe-cancel-btn');
-    const whitelistChannelBtn = document.getElementById('swe-whitelist-channel-btn');
-    const whitelistVideoBtn = document.getElementById('swe-whitelist-video-btn');
+    const toggleOverrideBtn = document.getElementById('swe-toggle-override-btn');
+    const overrideBox = document.getElementById('swe-override-box');
+    const frictionInput = document.getElementById('swe-friction-input');
+    const confirmOverrideBtn = document.getElementById('swe-confirm-override-btn');
 
     // Trigger tab close via service worker
     const triggerTabClose = () => {
@@ -235,26 +236,32 @@
       });
     };
 
-    // Button event listeners
     closeNowBtn.addEventListener('click', () => {
       triggerTabClose();
     });
 
-    cancelBtn.addEventListener('click', () => {
-      removeOverlay();
-      showStatusPill('Tab kept. Filter bypassed for this session.', 'info', 3000);
+    // High friction override logic
+    toggleOverrideBtn.addEventListener('click', () => {
+      overrideBox.classList.toggle('hidden');
+      if (!overrideBox.classList.contains('hidden')) {
+        frictionInput.focus();
+      }
     });
 
-    whitelistChannelBtn.addEventListener('click', async () => {
-      removeOverlay();
-      await addChannelToWhitelist(metadata.channel);
-      showStatusPill(`Whitelisted channel: ${metadata.channel}`, 'whitelisted', 3500);
+    const REQUIRED_PHRASE = 'I am wasting time';
+    frictionInput.addEventListener('input', () => {
+      if (frictionInput.value.trim().toLowerCase() === REQUIRED_PHRASE.toLowerCase()) {
+        confirmOverrideBtn.disabled = false;
+      } else {
+        confirmOverrideBtn.disabled = true;
+      }
     });
 
-    whitelistVideoBtn.addEventListener('click', async () => {
-      removeOverlay();
-      await addKeywordToWhitelist(metadata.title);
-      showStatusPill('Whitelisted this video title.', 'whitelisted', 3500);
+    confirmOverrideBtn.addEventListener('click', () => {
+      if (frictionInput.value.trim().toLowerCase() === REQUIRED_PHRASE.toLowerCase()) {
+        removeOverlay();
+        showStatusPill('Tab kept via override. Stay disciplined!', 'info', 4000);
+      }
     });
 
     // Start Countdown
@@ -440,25 +447,29 @@
       }
     }, '*');
 
-    // Timeout safety net (in case model hangs or is unresponsive)
+    // Generous timeout safety net for on-device local model inference
     setTimeout(() => {
-      if (isEvaluating) {
+      if (isEvaluating && currentVideoId === videoId) {
         window.removeEventListener('message', handleEvaluationResponse);
         isEvaluating = false;
         removePill();
         console.warn('[SWE Guardian] Evaluation timed out. Bypassing check.');
       }
-    }, 12000);
+    }, 35000);
+  }
+
+  // Debounced navigation handler to prevent concurrent prompt collisions
+  let navDebounce = null;
+  function scheduleEvaluation() {
+    clearTimeout(navDebounce);
+    navDebounce = setTimeout(() => {
+      evaluateCurrentVideo();
+    }, 400);
   }
 
   // YouTube navigation listeners
-  window.addEventListener('yt-navigate-finish', () => {
-    evaluateCurrentVideo();
-  });
-
-  window.addEventListener('spfdone', () => {
-    evaluateCurrentVideo();
-  });
+  window.addEventListener('yt-navigate-finish', scheduleEvaluation);
+  window.addEventListener('spfdone', scheduleEvaluation);
 
   // Watch for popstate or URL changes
   let lastUrl = location.href;
@@ -467,7 +478,7 @@
     if (currentUrl !== lastUrl) {
       lastUrl = currentUrl;
       if (getVideoId()) {
-        evaluateCurrentVideo();
+        scheduleEvaluation();
       } else {
         removeOverlay();
         removePill();
@@ -488,7 +499,7 @@
 
   // Initial run on script load
   if (getVideoId()) {
-    evaluateCurrentVideo();
+    scheduleEvaluation();
   }
 
 })();
