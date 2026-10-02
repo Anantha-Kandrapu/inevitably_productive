@@ -80,7 +80,8 @@ ALLOW ("USEFUL"):
 - Systems & Infrastructure: Linux, kernel, networking, operating systems, hardware, embedded, distributed systems.
 - Developer Tools: Docker, Kubernetes, Git, Neovim, VS Code, CI/CD, terminals, developer workflows.
 - Computer Science Fundamentals: Algorithms, data structures, LeetCode, mathematics for CS.
-- AI/ML Engineering: LLMs, PyTorch, Cursor, neural networks, machine learning engineering, AI tooling.
+- AI Distributed Training & ML Systems (MLSys): Distributed training (FSDP, DeepSpeed, Megatron-LM, PyTorch Distributed/DDP), CUDA, GPU clusters, NCCL, tensor parallelism, pipeline parallelism, model parallelism, 3D parallelism, LLM pre-training, fine-tuning (LoRA, QLoRA), inference serving (vLLM, TensorRT-LLM, Triton, Ollama), Ray, ML infrastructure, GPU memory optimization.
+- AI/ML Engineering: LLMs, PyTorch, Cursor, neural networks, machine learning engineering, AI tooling, model evaluation.
 - Engineering Culture: Tech postmortems, system design interview prep, engineering career growth.
 
 REJECT ("NOT_USEFUL"):
@@ -91,6 +92,9 @@ REJECT ("NOT_USEFUL"):
     const fewShotExamples = `EXAMPLES:
 Input: Title: "Python Tutorial: AsyncIO - Complete Guide", Channel: "Corey Schafer", Description: "Learn asynchronous programming with asyncio in Python."
 Output: {"verdict": "USEFUL", "category": "Programming", "reason": "Educational tutorial on Python asynchronous programming."}
+
+Input: Title: "Distributed Training at Scale: FSDP, DeepSpeed & Megatron-LM", Channel: "MLSys Deep Dive", Description: "Deep dive into tensor parallelism, pipeline parallelism, and NCCL communication across multi-node GPU clusters."
+Output: {"verdict": "USEFUL", "category": "AI Distributed Systems", "reason": "Advanced systems engineering and machine learning systems covering distributed model training."}
 
 Input: Title: "Apache Spark Tutorial for Big Data Pipelines", Channel: "Seattle Data Guy", Description: "Building scalable data engineering pipelines with Spark."
 Output: {"verdict": "USEFUL", "category": "Data Engineering", "reason": "Covers big data engineering with Apache Spark."}

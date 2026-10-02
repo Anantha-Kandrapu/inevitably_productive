@@ -30,12 +30,12 @@ function setupPeriodicAlarm(minutes = 5) {
   }
 }
 
-// Initialize settings on installation
+// Initialize settings on installation / reload
 chrome.runtime.onInstalled.addListener(async (details) => {
   const current = await chrome.storage.local.get(null);
   const initial = { ...DEFAULT_SETTINGS };
 
-  // Preserve existing settings if upgrading
+  // Preserve general settings like enabled, countdownSeconds, etc.
   if (details.reason === 'update') {
     Object.keys(DEFAULT_SETTINGS).forEach((key) => {
       if (current[key] !== undefined) {
@@ -44,13 +44,17 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     });
   }
 
+  // Force clear any old predefined whitelist items so 100% of decisions go to Gemini Nano
+  initial.whitelistChannels = [];
+  initial.whitelistKeywords = [];
+
   await chrome.storage.local.set(initial);
   updateBadge(initial.enabled);
   setupPeriodicAlarm(initial.periodicSweepMinutes || 5);
-  console.log('[SWE Guardian] Service worker installed and initialized.');
+  console.log('[SWE Guardian] Service worker initialized with completely empty whitelist.');
 });
 
-// Startup listener
+// Startup listener - ensure whitelists are not populated with old defaults
 chrome.runtime.onStartup.addListener(async () => {
   const { periodicSweepMinutes = 5, enabled = true } = await chrome.storage.local.get(['periodicSweepMinutes', 'enabled']);
   updateBadge(enabled);
