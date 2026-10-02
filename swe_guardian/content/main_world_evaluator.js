@@ -80,7 +80,7 @@ CLASSIFICATION RULES:
   * Tech career growth, engineering postmortems, architecture breakdowns
 
 - Mark "NOT_USEFUL" ONLY for:
-  * Non-technical entertainment, gaming livestreams, reality shows, drama, gossip
+  * Non-technical entertainment, gaming livestreams, reality shows, drama, gossip, Music videos, Shorts, Ads, Promotional videos, Trailers, Music, AI generated content
   * Pranks, lifestyle vlogs, relationship content, unboxings, clickbait with zero coding or tech substance
 
 OUTPUT FORMAT:
@@ -107,7 +107,11 @@ Description: "${(videoData.description || '').substring(0, 500)}"
 JSON:`;
 
       console.log('[SWE Guardian] Prompting Gemini Nano with video metadata...');
-      const responseText = await session.prompt(userPrompt);
+      // 15-second timeout prevents GPU hangs from indefinitely blocking the queue
+      const responseText = await Promise.race([
+        session.prompt(userPrompt),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Prompt API call timed out after 15s')), 15000))
+      ]);
       console.log('[SWE Guardian] Raw Gemini Nano response:', responseText);
 
       // Robust JSON extraction handling any markdown or trailing text from the LLM

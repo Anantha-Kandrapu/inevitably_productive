@@ -284,16 +284,26 @@
     const frictionInput = document.getElementById('swe-friction-input');
     const confirmOverrideBtn = document.getElementById('swe-confirm-override-btn');
 
-    // Trigger tab close via service worker
+    // Trigger tab close via service worker with context invalidation guard
     const triggerTabClose = () => {
       removeOverlay();
-      chrome.runtime.sendMessage({
-        type: 'CLOSE_TAB',
-        title: metadata.title,
-        channel: metadata.channel,
-        reason: evalResult.reason,
-        videoId: metadata.videoId
-      });
+      if (!chrome?.runtime?.id) {
+        console.warn('[SWE Guardian] Extension reloaded. Please refresh this YouTube tab.');
+        return;
+      }
+      try {
+        chrome.runtime.sendMessage({
+          type: 'CLOSE_TAB',
+          title: metadata.title,
+          channel: metadata.channel,
+          reason: evalResult.reason,
+          videoId: metadata.videoId
+        })?.catch?.((err) => {
+          console.warn('[SWE Guardian] Tab close message failed:', err);
+        });
+      } catch (err) {
+        console.warn('[SWE Guardian] Context invalidated during tab close:', err);
+      }
     };
 
     closeNowBtn.addEventListener('click', () => {
@@ -481,21 +491,25 @@
       const evalResult = event.data.payload;
       evaluatedVideosCache.set(videoId, evalResult);
 
-      // Log to background service worker
-      chrome.runtime.sendMessage({
-        type: 'LOG_VERDICT',
-        payload: {
-          videoId,
-          title: metadata.title,
-          channel: metadata.channel,
-          verdict: evalResult.verdict,
-          confidence: evalResult.confidence,
-          reason: evalResult.reason,
-          category: evalResult.category,
-          engine: evalResult.engine,
-          url: metadata.url
-        }
-      });
+      // Log to background service worker (safely handled if extension reloaded)
+      if (chrome?.runtime?.id) {
+        try {
+          chrome.runtime.sendMessage({
+            type: 'LOG_VERDICT',
+            payload: {
+              videoId,
+              title: metadata.title,
+              channel: metadata.channel,
+              verdict: evalResult.verdict,
+              confidence: evalResult.confidence,
+              reason: evalResult.reason,
+              category: evalResult.category,
+              engine: evalResult.engine,
+              url: metadata.url
+            }
+          })?.catch?.(() => {});
+        } catch (e) {}
+      }
 
       if (evalResult.verdict === 'USEFUL') {
         showStatusPill(`✅ SWE Verified: ${evalResult.reason || 'Useful'}`, 'useful', 5000);
