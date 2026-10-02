@@ -42,6 +42,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Settings Elements
   const strictnessSelect = document.getElementById('strictness-select');
   const countdownSelect = document.getElementById('countdown-select');
+  const sweepSelect = document.getElementById('sweep-select');
   const notifyToggle = document.getElementById('notify-toggle');
 
   // History Elements
@@ -99,6 +100,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   countdownSelect.addEventListener('change', async () => {
     const val = parseInt(countdownSelect.value, 10);
     await chrome.storage.local.set({ countdownSeconds: val });
+  });
+
+  sweepSelect.addEventListener('change', async () => {
+    const val = parseInt(sweepSelect.value, 10);
+    await chrome.storage.local.set({ periodicSweepMinutes: val });
   });
 
   notifyToggle.addEventListener('change', async () => {
@@ -164,6 +170,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (data.countdownSeconds !== undefined) {
       countdownSelect.value = data.countdownSeconds;
+    }
+
+    if (data.periodicSweepMinutes !== undefined) {
+      sweepSelect.value = data.periodicSweepMinutes;
     }
 
     if (data.notifyOnClose !== undefined) {

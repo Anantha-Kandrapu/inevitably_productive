@@ -313,7 +313,7 @@
   }
 
   // Perform evaluation by communicating with MAIN world evaluator
-  async function evaluateCurrentVideo() {
+  async function evaluateCurrentVideo(force = false) {
     const videoId = getVideoId();
     if (!videoId) {
       removeOverlay();
@@ -321,8 +321,8 @@
       return;
     }
 
-    // Prevent re-evaluating the exact same video if already decided in this page
-    if (videoId === currentVideoId && isEvaluating) return;
+    // Prevent re-evaluating the exact same video unless forced or not evaluating
+    if (!force && videoId === currentVideoId && isEvaluating) return;
     currentVideoId = videoId;
     removeOverlay();
 
@@ -341,14 +341,24 @@
       return;
     }
 
-    // Wait briefly for YouTube's DOM to populate title/channel
+    // Check in-memory cache for this video unless forced
+    if (!force && evaluatedVideosCache.has(videoId)) {
+      const cached = evaluatedVideosCache.get(videoId);
+      if (cached.verdict === 'NOT_USEFUL') {
+        const metadata = extractVideoMetadata();
+        showDistractionWarningModal(metadata, cached, settings);
+      }
+      return;
+    }
+
+    // Wait briefly for YouTube's DOM to populate fresh title/channel
     await new Promise(r => setTimeout(r, 600));
 
-    const metadata = extractVideoMetadata();
-    if (!metadata.title) {
-      // Retry once if title wasn't ready
-      await new Promise(r => setTimeout(r, 800));
-      Object.assign(metadata, extractVideoMetadata());
+    let metadata = extractVideoMetadata();
+    if (!metadata.title || metadata.title.toLowerCase().startsWith('youtube')) {
+      // Retry if title wasn't updated yet
+      await new Promise(r => setTimeout(r, 600));
+      metadata = extractVideoMetadata();
     }
 
     // 1. Check Whitelist first
@@ -460,18 +470,52 @@
 
   // Debounced navigation handler to prevent concurrent prompt collisions
   let navDebounce = null;
-  function scheduleEvaluation() {
+  function scheduleEvaluation(force = false) {
     clearTimeout(navDebounce);
     navDebounce = setTimeout(() => {
-      evaluateCurrentVideo();
+      evaluateCurrentVideo(force);
     }, 400);
   }
 
-  // YouTube navigation listeners
-  window.addEventListener('yt-navigate-finish', scheduleEvaluation);
-  window.addEventListener('spfdone', scheduleEvaluation);
+  // 1. Listen for background sweep messages from service worker
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message && message.type === 'FORCE_REEVALUATE') {
+      console.log('[SWE Guardian] Received FORCE_REEVALUATE command from background sweep.');
+      evaluatedVideosCache.delete(getVideoId());
+      scheduleEvaluation(true);
+      sendResponse({ status: 'ok' });
+    }
+  });
 
-  // Watch for popstate or URL changes
+  // 2. Active Heartbeat (runs every 750ms)
+  // Ensures video transitions via autoplay, playlists, or recommended clicks NEVER slip past
+  setInterval(() => {
+    const activeVid = getVideoId();
+    if (activeVid && activeVid !== currentVideoId) {
+      console.log(`[SWE Guardian] Heartbeat detected video transition: ${currentVideoId} -> ${activeVid}`);
+      isEvaluating = false;
+      currentVideoId = null; // Reset so evaluation proceeds
+      scheduleEvaluation();
+    }
+  }, 750);
+
+  // 3. In-tab Periodic Sweep (runs every 5 minutes on already-open tabs)
+  setInterval(() => {
+    const activeVid = getVideoId();
+    if (activeVid) {
+      console.log('[SWE Guardian] Running 5-minute periodic sweep on active tab.');
+      scheduleEvaluation(true);
+    }
+  }, 5 * 60 * 1000);
+
+  // 4. YouTube SPA Event Listeners (attached to document, window, and popstate)
+  document.addEventListener('yt-navigate-finish', () => scheduleEvaluation());
+  document.addEventListener('yt-page-data-updated', () => scheduleEvaluation());
+  window.addEventListener('yt-navigate-finish', () => scheduleEvaluation());
+  window.addEventListener('spfdone', () => scheduleEvaluation());
+  window.addEventListener('popstate', () => scheduleEvaluation());
+
+  // Watch for DOM URL changes
   let lastUrl = location.href;
   const observer = new MutationObserver(() => {
     const currentUrl = location.href;

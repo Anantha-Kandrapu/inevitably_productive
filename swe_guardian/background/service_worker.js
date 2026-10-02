@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
   strictness: 'balanced', // 'strict' | 'balanced' | 'lenient'
   countdownSeconds: 5,
   notifyOnClose: true,
+  periodicSweepMinutes: 5,
   whitelistChannels: [],
   whitelistKeywords: [],
   stats: {
@@ -17,6 +18,17 @@ const DEFAULT_SETTINGS = {
   },
   history: []
 };
+
+// Configure periodic sweep alarm
+function setupPeriodicAlarm(minutes = 5) {
+  chrome.alarms.clear('swe_periodic_sweep');
+  if (minutes && minutes > 0) {
+    chrome.alarms.create('swe_periodic_sweep', { periodInMinutes: minutes });
+    console.log(`[SWE Guardian] Periodic sweep scheduled every ${minutes} minutes.`);
+  } else {
+    console.log('[SWE Guardian] Periodic sweep disabled.');
+  }
+}
 
 // Initialize settings on installation
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -34,7 +46,39 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
   await chrome.storage.local.set(initial);
   updateBadge(initial.enabled);
+  setupPeriodicAlarm(initial.periodicSweepMinutes || 5);
   console.log('[SWE Guardian] Service worker installed and initialized.');
+});
+
+// Startup listener
+chrome.runtime.onStartup.addListener(async () => {
+  const { periodicSweepMinutes = 5, enabled = true } = await chrome.storage.local.get(['periodicSweepMinutes', 'enabled']);
+  updateBadge(enabled);
+  setupPeriodicAlarm(periodicSweepMinutes);
+});
+
+// Alarm trigger: sweep all open YouTube tabs
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === 'swe_periodic_sweep') {
+    const { enabled = true } = await chrome.storage.local.get(['enabled']);
+    if (!enabled) return;
+
+    console.log('[SWE Guardian] Running periodic 5-10min sweep on all open YouTube tabs...');
+    try {
+      const tabs = await chrome.tabs.query({ url: "*://*.youtube.com/*" });
+      for (const tab of tabs) {
+        if (tab.id && (tab.url?.includes('/watch') || tab.url?.includes('/shorts/'))) {
+          try {
+            chrome.tabs.sendMessage(tab.id, { type: 'FORCE_REEVALUATE' });
+          } catch (tabErr) {
+            // Tab may be inactive or sleeping
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[SWE Guardian] Periodic sweep failed:', err);
+    }
+  }
 });
 
 // Update extension icon badge
@@ -48,10 +92,15 @@ function updateBadge(enabled) {
   }
 }
 
-// Listen for storage changes to sync badge
+// Listen for storage changes to sync badge & alarm
 chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'local' && changes.enabled !== undefined) {
-    updateBadge(changes.enabled.newValue);
+  if (areaName === 'local') {
+    if (changes.enabled !== undefined) {
+      updateBadge(changes.enabled.newValue);
+    }
+    if (changes.periodicSweepMinutes !== undefined) {
+      setupPeriodicAlarm(changes.periodicSweepMinutes.newValue);
+    }
   }
 });
 
