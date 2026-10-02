@@ -313,7 +313,16 @@
 
 .swe-friction-prompt strong {
   color: #f87171;
-  user-select: all;
+  display: block;
+  margin-top: 6px;
+  font-size: 12.5px;
+  font-style: italic;
+  user-select: none;
+  -webkit-user-select: none;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid #ef4444;
 }
 
 .swe-friction-input-row {

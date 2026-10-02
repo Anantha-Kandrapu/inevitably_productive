@@ -156,6 +156,60 @@
     }
   }
 
+  // Curated pool of 50 distinct psychological friction phrases to destroy muscle-memory bypassing
+  const FRICTION_PHRASES = [
+    "I am choosing to procrastinate on my engineering goals",
+    "This video is not making me a better engineer",
+    "I am actively avoiding deep work and hard problems",
+    "My future self will regret watching this distraction",
+    "I am trading my focus and time for cheap dopamine",
+    "This content will not help me build better software",
+    "I am ignoring my engineering priorities right now",
+    "I am wasting valuable hours of my life on fluff",
+    "I am giving in to distraction instead of shipping code",
+    "This entertainment is stealing my prime cognitive energy",
+    "I am procrastinating instead of mastering my craft",
+    "I am choosing short term pleasure over long term mastery",
+    "Watching this video will not advance my career",
+    "I am letting an algorithm dictate my attention span",
+    "I am choosing brain rot over technical excellence",
+    "I am running away from the code I need to write",
+    "This distraction is a conscious waste of my potential",
+    "I am sabotaging my productivity and focus today",
+    "I am surrendering my discipline to mindless entertainment",
+    "I will have to work late because I am watching this",
+    "This video does not solve any distributed systems problems",
+    "I am consuming passive content instead of creating value",
+    "I am letting distraction defeat my professional ambition",
+    "I am trading real progress for empty entertainment",
+    "I am stalling because the actual work is mentally demanding",
+    "This clickbait will be completely forgotten in an hour",
+    "I am choosing comfort over engineering growth",
+    "I am choosing to fall behind on my technical roadmap",
+    "I acknowledge that watching this is counterproductive",
+    "I am allowing this tab to derail my momentum",
+    "I am prioritizing boredom relief over my ambitions",
+    "This content will not help me pass any technical interview",
+    "I am letting YouTube recommendations control my schedule",
+    "I am escaping into fluff instead of solving hard bugs",
+    "I know I should close this tab and get back to work",
+    "I am trading my peak mental hours for internet noise",
+    "This tab is an obstacle between me and my goals",
+    "I am choosing to be distracted instead of building systems",
+    "I am giving away my attention to low value media",
+    "I am rationalizing a distraction that I know is useless",
+    "I am delaying my success by watching this video",
+    "I am consciously choosing to lose momentum on my project",
+    "This video will not teach me how to design scalable architectures",
+    "I am choosing passive consumption over active learning",
+    "I am letting procrastination take control of my day",
+    "I am sacrificing my focus on the altar of boredom",
+    "I am choosing entertainment over engineering discipline",
+    "I know this content has zero technical or educational value",
+    "I am wasting my focus and I will regret this later",
+    "I am overriding the guardian because I lack discipline right now"
+  ];
+
   // Display Countdown and Tab Closure Overlay
   function showDistractionWarningModal(metadata, evalResult, settings) {
     removeOverlay();
@@ -167,6 +221,9 @@
     countdownRemaining = settings.countdownSeconds !== undefined ? settings.countdownSeconds : 5;
     const initialCountdown = countdownRemaining;
     const perimeter = 251.2; // 2 * PI * r (r = 40)
+
+    // Select a random phrase from the 50 friction phrases
+    const requiredPhrase = FRICTION_PHRASES[Math.floor(Math.random() * FRICTION_PHRASES.length)];
 
     overlay.innerHTML = `
       <div class="swe-modal">
@@ -203,9 +260,12 @@
               Emergency Override (Keep Tab)...
             </button>
             <div id="swe-override-box" class="swe-override-box hidden">
-              <div class="swe-friction-prompt">Type <strong>"I am wasting time"</strong> to unlock:</div>
+              <div class="swe-friction-prompt">
+                To override, manually type the exact phrase below (no paste):
+                <strong>"${escapeHtml(requiredPhrase)}"</strong>
+              </div>
               <div class="swe-friction-input-row">
-                <input type="text" id="swe-friction-input" placeholder="Type exact phrase..." autocomplete="off">
+                <input type="text" id="swe-friction-input" placeholder="Type exact phrase to unlock..." autocomplete="off">
                 <button id="swe-confirm-override-btn" class="swe-btn-confirm-override" disabled>Keep Tab</button>
               </div>
             </div>
@@ -240,7 +300,7 @@
       triggerTabClose();
     });
 
-    // High friction override logic
+    // High friction override logic with anti-paste
     toggleOverrideBtn.addEventListener('click', () => {
       overrideBox.classList.toggle('hidden');
       if (!overrideBox.classList.contains('hidden')) {
@@ -248,9 +308,14 @@
       }
     });
 
-    const REQUIRED_PHRASE = 'I am wasting time';
+    // Prevent pasting to enforce conscious typing
+    frictionInput.addEventListener('paste', (e) => {
+      e.preventDefault();
+      showStatusPill('Pasting disabled! You must physically type the phrase.', 'info', 3000);
+    });
+
     frictionInput.addEventListener('input', () => {
-      if (frictionInput.value.trim().toLowerCase() === REQUIRED_PHRASE.toLowerCase()) {
+      if (frictionInput.value.trim().toLowerCase() === requiredPhrase.toLowerCase()) {
         confirmOverrideBtn.disabled = false;
       } else {
         confirmOverrideBtn.disabled = true;
@@ -258,7 +323,7 @@
     });
 
     confirmOverrideBtn.addEventListener('click', () => {
-      if (frictionInput.value.trim().toLowerCase() === REQUIRED_PHRASE.toLowerCase()) {
+      if (frictionInput.value.trim().toLowerCase() === requiredPhrase.toLowerCase()) {
         removeOverlay();
         showStatusPill('Tab kept via override. Stay disciplined!', 'info', 4000);
       }
