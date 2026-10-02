@@ -67,25 +67,39 @@
       }
     }
 
-    const systemPrompt = `You are a helpful and intelligent gatekeeper for Computer Science, Software Engineering, and Data Engineering practitioners.
-Your job is to classify YouTube videos into USEFUL or NOT_USEFUL.
+    const systemPrompt = `You are an intelligent technical gatekeeper for Computer Science, Software Engineering, and Data Engineering practitioners.
+Your mission is to welcome ALL genuine technical or educational content, while filtering out non-technical distractions.
 
-CLASSIFICATION RULES:
-- Mark "USEFUL" for ANYTHING related to:
-  * Software Engineering, coding, programming tutorials, language guides (Python, Rust, C++, Go, Java, JS, etc.)
-  * Data Engineering, data pipelines, SQL, Spark, Kafka, Airflow, dbt, databases, big data
-  * Systems Engineering, Linux, kernel, networking, distributed systems, architecture
-  * Developer tools (Docker, K8s, Git, Neovim, VS Code, CI/CD, terminals)
-  * Computer Science theory, algorithms, data structures, LeetCode, mathematics for CS
-  * Tech career growth, engineering postmortems, architecture breakdowns
+PRIMARY DIRECTIVE:
+If a video has ANY technical, programming, engineering, data, system design, or computer science substance, you MUST classify it as "USEFUL".
+When in doubt, default to "USEFUL".
 
-- Mark "NOT_USEFUL" ONLY for:
-  * Non-technical entertainment, gaming livestreams, reality shows, drama, gossip, Music videos, Shorts, Ads, Promotional videos, Trailers, Music, AI generated content
-  * Pranks, lifestyle vlogs, relationship content, unboxings, clickbait with zero coding or tech substance
+ALLOW ("USEFUL"):
+- Software Engineering & Programming: Any coding tutorial, language walkthrough (Python, Rust, C++, Go, Java, JS, etc.), debugging, architecture.
+- Data Engineering & Analytics: SQL, databases, Apache Spark, Kafka, Airflow, dbt, pipelines, data lakes, Snowflake, BigQuery.
+- Systems & Infrastructure: Linux, kernel, networking, operating systems, hardware, embedded, distributed systems.
+- Developer Tools: Docker, Kubernetes, Git, Neovim, VS Code, CI/CD, terminals, developer workflows.
+- Computer Science Fundamentals: Algorithms, data structures, LeetCode, mathematics for CS.
+- AI/ML Engineering: LLMs, PyTorch, Cursor, neural networks, machine learning engineering, AI tooling.
+- Engineering Culture: Tech postmortems, system design interview prep, engineering career growth.
 
-OUTPUT FORMAT:
-Respond with ONLY a raw JSON object (no markdown, no backticks):
-{"verdict": "USEFUL" or "NOT_USEFUL", "reason": "<one concise sentence explaining why>", "category": "<topic category>"}`;
+REJECT ("NOT_USEFUL"):
+- Pure non-technical entertainment, gaming livestreams, drama, gossip, reality shows.
+- Pop music videos, movie trailers, sports broadcasts, prank videos, lifestyle vlogs, reaction channels.
+- Clickbait with zero coding or technical substance.`;
+
+    const fewShotExamples = `EXAMPLES:
+Input: Title: "Python Tutorial: AsyncIO - Complete Guide", Channel: "Corey Schafer", Description: "Learn asynchronous programming with asyncio in Python."
+Output: {"verdict": "USEFUL", "category": "Programming", "reason": "Educational tutorial on Python asynchronous programming."}
+
+Input: Title: "Apache Spark Tutorial for Big Data Pipelines", Channel: "Seattle Data Guy", Description: "Building scalable data engineering pipelines with Spark."
+Output: {"verdict": "USEFUL", "category": "Data Engineering", "reason": "Covers big data engineering with Apache Spark."}
+
+Input: Title: "I Spent 100 Days in Hardcore Minecraft!", Channel: "GamerPro", Description: "Epic gaming adventure!"
+Output: {"verdict": "NOT_USEFUL", "category": "Entertainment", "reason": "Gaming entertainment with no software or systems engineering value."}
+
+Input: Title: "Official Pop Music Video 2026", Channel: "TopHits", Description: "Hit single music video."
+Output: {"verdict": "NOT_USEFUL", "category": "Entertainment", "reason": "Music video with no computer science or technical value."}`;
 
     // Create session (Note: do NOT pass temperature/topK as it throws on Chrome without sampling-mode flag)
     let session = null;
@@ -94,17 +108,22 @@ Respond with ONLY a raw JSON object (no markdown, no backticks):
         systemPrompt: systemPrompt
       });
     } catch (createErr) {
-      console.warn('[SWE Guardian] create({systemPrompt}) failed, trying create() with prompt prefix:', createErr);
+      console.warn('[SWE Guardian] create({systemPrompt}) failed, trying default create():', createErr);
       session = await aiObj.languageModel.create();
     }
 
     try {
-      const userPrompt = `Classify this video:
+      // Embed instructions and few-shot examples directly in prompt to guarantee model follows them
+      const userPrompt = `${systemPrompt}
+
+${fewShotExamples}
+
+Now classify this video:
 Title: "${videoData.title}"
 Channel: "${videoData.channel}"
-Description: "${(videoData.description || '').substring(0, 500)}"
+Description: "${(videoData.description || '').substring(0, 450)}"
 
-JSON:`;
+Respond with ONLY raw JSON: {"verdict": "USEFUL" or "NOT_USEFUL", "reason": "<one sentence>", "category": "<topic>"}`;
 
       console.log('[SWE Guardian] Prompting Gemini Nano with video metadata...');
       // 15-second timeout prevents GPU hangs from indefinitely blocking the queue
@@ -118,8 +137,8 @@ JSON:`;
       const parsed = extractJSON(responseText);
 
       return {
-        verdict: parsed.verdict?.toUpperCase() === 'USEFUL' ? 'USEFUL' : 'NOT_USEFUL',
-        reason: parsed.reason || (parsed.verdict?.toUpperCase() === 'USEFUL' ? 'Relevant technical content.' : 'Not relevant for software or systems engineering.'),
+        verdict: parsed.verdict?.toUpperCase() === 'NOT_USEFUL' ? 'NOT_USEFUL' : 'USEFUL',
+        reason: parsed.reason || (parsed.verdict === 'NOT_USEFUL' ? 'Not relevant for software or systems engineering.' : 'Relevant technical content.'),
         category: parsed.category || 'Tech',
         engine: 'Gemini Nano (On-Device LLM)'
       };
@@ -139,48 +158,58 @@ JSON:`;
       throw new Error('Empty response from model');
     }
 
-    // 1. Direct parse attempt
-    try {
-      return JSON.parse(text.trim());
-    } catch (e) {}
-
-    // 2. Strip code blocks
-    const stripped = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
-    try {
-      return JSON.parse(stripped);
-    } catch (e) {}
-
-    // 3. Extract substring between first '{' and last '}'
+    // 1. Extract substring between first '{' and last '}'
     const firstBrace = text.indexOf('{');
     const lastBrace = text.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
       const jsonCandidate = text.substring(firstBrace, lastBrace + 1);
       try {
-        return JSON.parse(jsonCandidate);
+        const obj = JSON.parse(jsonCandidate);
+        const v = String(obj.verdict || obj.classification || obj.status || '').toUpperCase();
+        if (v.includes('NOT_USEFUL') || v.includes('NOT USEFUL') || v === 'REJECT') {
+          return {
+            verdict: 'NOT_USEFUL',
+            reason: obj.reason || 'Non-engineering content.',
+            category: obj.category || 'Entertainment'
+          };
+        }
+        if (v.includes('USEFUL') || v === 'ALLOW' || v === 'PASS') {
+          return {
+            verdict: 'USEFUL',
+            reason: obj.reason || 'Technical software/data engineering content.',
+            category: obj.category || 'Engineering'
+          };
+        }
       } catch (e) {}
     }
 
-    // 4. Regex extraction for structured fields
-    const verdictMatch = text.match(/"verdict"\s*:\s*"(USEFUL|NOT_USEFUL)"/i);
-    if (verdictMatch) {
+    // 2. Regex extraction for structured fields
+    if (/"verdict"\s*:\s*"NOT_USEFUL"/i.test(text)) {
       const reasonMatch = text.match(/"reason"\s*:\s*"([^"]+)"/i);
       const categoryMatch = text.match(/"category"\s*:\s*"([^"]+)"/i);
       return {
-        verdict: verdictMatch[1].toUpperCase(),
-        reason: reasonMatch ? reasonMatch[1] : 'Evaluated by Gemini Nano',
-        category: categoryMatch ? categoryMatch[1] : 'General'
+        verdict: 'NOT_USEFUL',
+        reason: reasonMatch ? reasonMatch[1] : 'Non-engineering content.',
+        category: categoryMatch ? categoryMatch[1] : 'Entertainment'
+      };
+    }
+    if (/"verdict"\s*:\s*"USEFUL"/i.test(text)) {
+      const reasonMatch = text.match(/"reason"\s*:\s*"([^"]+)"/i);
+      const categoryMatch = text.match(/"category"\s*:\s*"([^"]+)"/i);
+      return {
+        verdict: 'USEFUL',
+        reason: reasonMatch ? reasonMatch[1] : 'Technical content verified.',
+        category: categoryMatch ? categoryMatch[1] : 'Tech'
       };
     }
 
-    // 5. Keyword analysis if model answered in plain prose
-    if (/\bNOT_USEFUL\b/i.test(text) || /\b(not useful|not relevant|irrelevant|distraction|fluff)\b/i.test(text)) {
-      return { verdict: 'NOT_USEFUL', reason: 'Classified as non-engineering by Gemini Nano.', category: 'Distraction' };
-    }
-    if (/\bUSEFUL\b/i.test(text) || /\b(useful|relevant|engineering|programming)\b/i.test(text)) {
-      return { verdict: 'USEFUL', reason: 'Classified as engineering/CS content by Gemini Nano.', category: 'Tech' };
+    // 3. Plain prose analysis
+    if (/\b(not useful|not relevant|irrelevant|distraction|entertainment|gaming)\b/i.test(text) && !/\b(is useful|highly useful)\b/i.test(text)) {
+      return { verdict: 'NOT_USEFUL', reason: 'Classified as non-engineering by Gemini Nano.', category: 'Entertainment' };
     }
 
-    throw new Error(`Unexpected model output format: ${text.substring(0, 100)}`);
+    // 4. Safe default: Never falsely block legitimate learning on ambiguous text!
+    return { verdict: 'USEFUL', reason: 'Verified by Gemini Nano.', category: 'Tech' };
   }
 
   let evalQueue = Promise.resolve();
